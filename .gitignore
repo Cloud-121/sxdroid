@@ -1,0 +1,12 @@
+# Gradle
+.gradle/
+build/
+**/build/
+
+# Local SDK and IDE files
+local.properties
+.idea/
+*.iml
+
+# OS files
+.DS_Store
