@@ -1,5 +1,6 @@
 package io.github.sxdroid
 
+import android.Manifest
 import android.annotation.SuppressLint
 import android.os.Bundle
 import android.os.Handler
@@ -9,6 +10,8 @@ import android.view.KeyEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.setContent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.background
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -17,6 +20,7 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -39,9 +43,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.focus.onFocusChanged
@@ -68,7 +74,13 @@ import io.github.sxdroid.input.EdgeGestureClassifier
 import io.github.sxdroid.input.GestureBounds
 import io.github.sxdroid.input.GesturePoint
 import io.github.sxdroid.launcher.LauncherViewModel
+import io.github.sxdroid.config.HomeSettings
+import io.github.sxdroid.system.DeviceStatus
 import androidx.compose.foundation.isSystemInDarkTheme
+import kotlinx.coroutines.delay
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class MainActivity : ComponentActivity() {
     private val launcher: LauncherViewModel by viewModels()
@@ -165,12 +177,19 @@ class MainActivity : ComponentActivity() {
 @OptIn(ExperimentalComposeUiApi::class)
 private fun LauncherScreen(viewModel: LauncherViewModel) {
     val state by viewModel.state.collectAsState()
+    val status by viewModel.status.collectAsState()
     val focusRequester = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
     val classifier = remember { EdgeGestureClassifier(LauncherConfig().edgeGestures) }
     var showKeyboardRequest by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
     val selectedIndex by rememberUpdatedState(state.selectedIndex)
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+        viewModel.onCameraPermissionResult(it)
+    }
+    LaunchedEffect(state.requestCameraPermission) {
+        if (state.requestCameraPermission) cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+    }
     LaunchedEffect(showKeyboardRequest) {
         if (showKeyboardRequest) {
             focusRequester.requestFocus()
@@ -214,6 +233,7 @@ private fun LauncherScreen(viewModel: LauncherViewModel) {
         }
     }
     Box(gestureModifier.fillMaxSize()) {
+        if (!state.menuVisible) HomeOverlay(state.settings, status)
         if (state.menuVisible) {
             LaunchedEffect(state.menuId, state.selectedIndex, state.menuVisible) {
                 if (state.selectedIndex in state.commands.indices) listState.scrollToItem(state.selectedIndex)
@@ -242,7 +262,7 @@ private fun LauncherScreen(viewModel: LauncherViewModel) {
                         modifier = Modifier.fillMaxWidth().weight(1f),
                         contentPadding = PaddingValues(vertical = 8.dp),
                     ) {
-                        itemsIndexed(state.commands, key = { _, command -> command.id }) { index, command ->
+                        itemsIndexed(state.commands, key = { _, command -> "${state.menuId}:${command.id}" }) { index, command ->
                             val selected = index == state.selectedIndex
                             CommandRow(
                                 selected = selected,
@@ -263,9 +283,11 @@ private fun LauncherScreen(viewModel: LauncherViewModel) {
                 name = command.name,
                 description = command.description,
                 isApplication = viewModel.isApplication(index),
+                isFavorite = viewModel.isFavorite(index),
                 onDismiss = viewModel::dismissContext,
                 onOpen = { viewModel.dismissContext(); viewModel.select(index) },
                 onAppInfo = { viewModel.dismissContext(); viewModel.openApplicationDetails(index) },
+                onToggleFavorite = { viewModel.toggleFavorite(index) },
             )
         }
     }
@@ -279,19 +301,65 @@ private fun LauncherScreen(viewModel: LauncherViewModel) {
 }
 
 @Composable
-private fun ActionMenuDialog(name: String, description: String, isApplication: Boolean, onDismiss: () -> Unit, onOpen: () -> Unit, onAppInfo: () -> Unit) {
+private fun ActionMenuDialog(
+    name: String,
+    description: String,
+    isApplication: Boolean,
+    isFavorite: Boolean,
+    onDismiss: () -> Unit,
+    onOpen: () -> Unit,
+    onAppInfo: () -> Unit,
+    onToggleFavorite: () -> Unit,
+) {
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(name) },
         text = { Text(description) },
         confirmButton = { TextButton(onClick = onOpen) { Text("Open") } },
         dismissButton = {
-            Row {
+            Column {
+                if (isApplication) TextButton(onClick = onToggleFavorite) { Text(if (isFavorite) "Remove favorite" else "Add favorite") }
                 if (isApplication) TextButton(onClick = onAppInfo) { Text("App info") }
                 TextButton(onClick = onDismiss) { Text("Cancel") }
             }
         },
     )
+}
+
+@Composable
+private fun HomeOverlay(settings: HomeSettings, status: DeviceStatus) {
+    if (!settings.showClock && !settings.showDate && !settings.showBattery && !settings.showNetwork) return
+    val now by produceState(System.currentTimeMillis()) {
+        while (true) {
+            delay(1_000)
+            value = System.currentTimeMillis()
+        }
+    }
+    val locale = Locale.getDefault()
+    val lines = buildList {
+        if (settings.showClock) add(SimpleDateFormat("HH:mm", locale).format(Date(now)))
+        if (settings.showDate) add(SimpleDateFormat("EEE, MMM d", locale).format(Date(now)))
+        if (settings.showBattery) {
+            add(status.batteryPercent?.let { "battery $it%${if (status.charging) " charging" else ""}" } ?: "battery ?")
+        }
+        if (settings.showNetwork) add(status.network)
+    }
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Column(
+            modifier = Modifier.background(Color.Black.copy(alpha = 0.32f)).padding(horizontal = 18.dp, vertical = 12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(3.dp),
+        ) {
+            lines.forEachIndexed { index, line ->
+                Text(
+                    text = line,
+                    color = Color.White,
+                    fontSize = if (settings.showClock && index == 0) 36.sp else 14.sp,
+                    fontWeight = if (settings.showClock && index == 0) FontWeight.Bold else FontWeight.Normal,
+                )
+            }
+        }
+    }
 }
 
 @Composable

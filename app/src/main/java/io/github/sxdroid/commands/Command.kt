@@ -3,6 +3,7 @@ package io.github.sxdroid.commands
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import io.github.sxdroid.config.SettingOption
 
 /** A thing the palette can show and activate. */
 interface Command {
@@ -70,5 +71,32 @@ class InfoCommand(
     override val description: String,
     override val keywords: List<String> = emptyList(),
 ) : Command {
+    override suspend fun execute(context: Context) = Unit
+}
+
+class SettingCommand(
+    val option: SettingOption,
+    enabled: Boolean,
+) : Command {
+    override val id = option.commandId
+    override val name = option.title
+    override val description = if (enabled) "On" else "Off"
+    override val keywords = listOf("configuration", "setting", "toggle")
+    override suspend fun execute(context: Context) = Unit
+}
+
+enum class DeviceControl(val commandId: String, val title: String, val detail: String) {
+    FLASHLIGHT("control.flashlight", "Flashlight", "Toggle camera torch"),
+    MEDIA_VOLUME_UP("control.volume.media.up", "Media volume +", "Raise media volume"),
+    MEDIA_VOLUME_DOWN("control.volume.media.down", "Media volume -", "Lower media volume"),
+    RING_VOLUME_UP("control.volume.ring.up", "Ring volume +", "Raise ring volume"),
+    RING_VOLUME_DOWN("control.volume.ring.down", "Ring volume -", "Lower ring volume"),
+}
+
+class DeviceControlCommand(val control: DeviceControl) : Command {
+    override val id = control.commandId
+    override val name = control.title
+    override val description = control.detail
+    override val keywords = listOf("device", "control", "audio", "volume", "torch")
     override suspend fun execute(context: Context) = Unit
 }

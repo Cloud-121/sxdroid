@@ -9,7 +9,10 @@ import kotlinx.coroutines.withContext
 import java.util.Locale
 
 internal fun builtInMenuCommands(): List<Command> = listOf(
+    MenuCommand("menu.favorites", "Favorites", "Favorite applications", listOf("starred", "apps"), "favorites"),
     MenuCommand("menu.apps", "Apps", "Installed launchable applications", listOf("applications", "launch"), "apps"),
+    MenuCommand("menu.configuration", "Configuration", "Launcher appearance settings", listOf("settings", "home", "overlay"), "configuration"),
+    MenuCommand("menu.controls", "Controls", "Flashlight and volume controls", listOf("torch", "audio", "volume"), "controls"),
     MenuCommand("menu.system", "System", "Settings and device controls", listOf("settings", "wifi", "bluetooth"), "system"),
 )
 

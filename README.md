@@ -1,6 +1,6 @@
 # SxDroid
 
-SxDroid is a small, keyboard-first Android home launcher inspired by Sxmo's text menu model and dmenu. Home is intentionally empty so the wallpaper remains visible; the top-level Menu contains only Apps and System.
+SxDroid is a small, keyboard-first Android home launcher inspired by Sxmo's text menu model and dmenu. Home keeps the wallpaper visible and can optionally show a centered clock, date, battery, and network status.
 
 ## Build and install
 
@@ -21,9 +21,11 @@ After installation, press Home and choose **SxDroid** as the default launcher. T
 - With the menu open, press Volume Up and Volume Down together to select/open the highlighted item.
 - Back clears a search first, then leaves a nested menu, then hides the top-level Menu. A top-edge swipe up also hides the menu.
 - Hardware navigation opens the menu when home is closed before navigating; Enter/center opens the menu first rather than immediately launching its first item. Menu scrolling follows the highlighted row after volume and touch navigation.
+- Favorites lists apps added with an app row's long-press context action. Favorites and launcher configuration persist locally with SharedPreferences.
+- Configuration toggles the centered clock, date, battery, and network overlays. Overlays are shown only on the wallpaper home while menus are closed.
+- Controls toggles the flashlight and raises or lowers media/ring volume. Flashlight access requests the ordinary Camera permission when first used and handles missing hardware or denied access without privileged APIs.
 - The System menu opens Android Settings, Wi-Fi, Bluetooth, Display, and Sound pages.
-- Configuration is intentionally not shown until it has functional settings to expose.
-- Long-press an app or command row, or the launcher surface, for the selected command context menu including Android App info where applicable.
+- Long-press an app or command row, or the launcher surface, for the selected command context menu including favorite and Android App info actions where applicable.
 - Notifications and Scripts/Commands are not shown: this ordinary launcher has no notification-listener approval or shell/privileged execution capability.
 
 ### Edge gestures
@@ -51,12 +53,12 @@ Gestures and volume interception exist only inside SxDroid's focused activity an
 
 Sxmo is a Linux mobile environment, not an Android launcher. Its [user manual](https://sxmo.org/docs/user/sxmo.7.html#MENUS) documents dmenu/bemenu/wofi menus, Volume Raise/Lower navigation, Power selection, separate Apps and Config menus, context menus, and notifications where its services are available. Its [gesture documentation](https://sxmo.org/docs/user/sxmo.7.html#GESTURES) documents the upstream edge semantics. SxDroid preserves the text-menu organization while documenting Android substitutions instead of claiming Sxmo's global Power, shell, modem, window-management, or notification behavior.
 
-Battery and network monitoring retain the existing low-permission implementation, but status text is not drawn over the wallpaper-first home or menu.
+Battery and network monitoring use ordinary low-permission Android APIs and are drawn only when their home overlay settings are enabled.
 
 ## Design and implementation
 
 - `commands/` holds the generic `Command` interface, application, URL, and Intent commands, registry, and ranking.
-- `launcher/` owns Compose state, package discovery/cache, package/battery receivers, and network callbacks.
+- `launcher/` owns Compose state, package discovery/cache, package/battery receivers, network callbacks, favorites, and persisted home settings.
 - `menu/`, `input/`, and `config/` isolate nested navigation, configurable key mappings, and a TOML-ready in-memory configuration model.
 - Application discovery uses normal `PackageManager` launcher queries and manifest package visibility. It excludes SxDroid itself to avoid launching the Home activity recursively.
 - Package, battery, and network callbacks are released with the view model.
@@ -67,4 +69,4 @@ SxDroid is intended to work as an ordinary launcher on GrapheneOS as well as AOS
 
 ## Limitations and plans
 
-Version 0.1 deliberately does not show application icons, manage widgets, read notifications, run shell commands, change quick settings, or persist configuration. Vendor Settings activities can be absent, so all settings fallbacks fail gracefully. Planned work includes TOML configuration, more configurable menu entries and bindings, and optional launcher conveniences that preserve the low-permission/offline design.
+SxDroid deliberately does not show application icons, manage widgets, read notifications, run shell commands, or claim root/accessibility/privileged control. Vendor Settings activities and camera flash hardware can be absent, so controls and settings fallbacks fail gracefully. Planned work includes TOML configuration and more configurable bindings.

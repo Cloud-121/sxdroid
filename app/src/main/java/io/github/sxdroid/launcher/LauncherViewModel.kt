@@ -8,6 +8,7 @@ import android.content.IntentFilter
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
+import android.media.AudioManager
 import android.os.BatteryManager
 import android.os.Build
 import android.provider.Settings
@@ -16,13 +17,23 @@ import androidx.lifecycle.viewModelScope
 import io.github.sxdroid.commands.Command
 import io.github.sxdroid.commands.CommandRanker
 import io.github.sxdroid.commands.CommandRegistry
+import io.github.sxdroid.commands.DeviceControl
+import io.github.sxdroid.commands.DeviceControlCommand
 import io.github.sxdroid.commands.MenuCommand
 import io.github.sxdroid.commands.LaunchApplicationCommand
 import io.github.sxdroid.commands.OpenIntentCommand
+import io.github.sxdroid.commands.SettingCommand
+import io.github.sxdroid.config.FavoriteApps
+import io.github.sxdroid.config.HomeSettings
+import io.github.sxdroid.config.LauncherPreferences
+import io.github.sxdroid.config.SettingOption
 import io.github.sxdroid.menu.CommandMenu
 import io.github.sxdroid.menu.MenuNavigator
 import io.github.sxdroid.system.DeviceStatus
 import io.github.sxdroid.system.AndroidActions
+import io.github.sxdroid.system.FlashlightController
+import io.github.sxdroid.system.TorchResult
+import io.github.sxdroid.system.VolumeControls
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -41,14 +52,19 @@ data class LauncherState(
     val message: String? = null,
     val contextIndex: Int? = null,
     val actionMenuVisible: Boolean = false,
+    val settings: HomeSettings = HomeSettings(),
+    val requestCameraPermission: Boolean = false,
 )
 
 class LauncherViewModel(application: Application) : AndroidViewModel(application) {
     private val registry = CommandRegistry(application)
+    private val preferences = LauncherPreferences(application)
+    private val flashlight = FlashlightController(application)
+    private var favorites = preferences.loadFavorites()
     private val menus = mutableMapOf<String, CommandMenu>()
     private lateinit var navigator: MenuNavigator
     private var applications: List<Command> = emptyList()
-    private val _state = MutableStateFlow(LauncherState())
+    private val _state = MutableStateFlow(LauncherState(settings = preferences.loadSettings()))
     val state: StateFlow<LauncherState> = _state.asStateFlow()
     private val _status = MutableStateFlow(DeviceStatus())
     val status: StateFlow<DeviceStatus> = _status.asStateFlow()
@@ -87,9 +103,15 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             OpenIntentCommand("system.sound", "Sound", "Sound settings", listOf("audio", "volume"), Intent(Settings.ACTION_SOUND_SETTINGS)),
         ))
         val apps = CommandMenu("apps", "Apps", emptyList())
+        val favorites = CommandMenu("favorites", "Favorites", emptyList())
+        val configuration = CommandMenu("configuration", "Configuration", configurationCommands())
+        val controls = CommandMenu("controls", "Controls", DeviceControl.entries.map(::DeviceControlCommand))
         val root = CommandMenu("root", "Menu", registry.builtIns())
         menus[root.id] = root
         menus[apps.id] = apps
+        menus[favorites.id] = favorites
+        menus[configuration.id] = configuration
+        menus[controls.id] = controls
         menus[system.id] = system
         navigator = MenuNavigator(root, menus)
     }
@@ -137,7 +159,18 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         _state.value = _state.value.copy(loading = true)
         applications = registry.installedApplications()
         menus["apps"] = menus.getValue("apps").copy(commands = applications)
+        updateFavoritesMenu()
         publish(loading = false)
+    }
+
+    private fun configurationCommands(): List<Command> = SettingOption.entries.map { option ->
+        SettingCommand(option, _state.value.settings.isEnabled(option))
+    }
+
+    private fun updateFavoritesMenu() {
+        menus["favorites"] = menus.getValue("favorites").copy(
+            commands = applications.filter { it.id in favorites },
+        )
     }
 
     fun setQuery(query: String) {
@@ -184,6 +217,20 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
 
     fun isApplication(index: Int): Boolean = _state.value.commands.getOrNull(index) is LaunchApplicationCommand
 
+    fun isFavorite(index: Int): Boolean = _state.value.commands.getOrNull(index)?.let { it.id in favorites } == true
+
+    fun toggleFavorite(index: Int) {
+        val command = _state.value.commands.getOrNull(index) as? LaunchApplicationCommand ?: return
+        favorites = favorites.toggle(command.id)
+        preferences.saveFavorites(favorites)
+        updateFavoritesMenu()
+        _state.value = _state.value.copy(
+            contextIndex = null,
+            message = if (command.id in favorites) "Added ${command.name} to favorites" else "Removed ${command.name} from favorites",
+        )
+        publish()
+    }
+
     fun openSelectedContext() {
         requestContext(_state.value.selectedIndex)
     }
@@ -213,6 +260,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                 message = null,
                 contextIndex = null,
                 actionMenuVisible = false,
+                requestCameraPermission = false,
             )
             publish()
         }
@@ -228,6 +276,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             message = null,
             contextIndex = null,
             actionMenuVisible = false,
+            requestCameraPermission = false,
         )
         publish()
     }
@@ -253,10 +302,58 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             publish()
             return
         }
+        if (command is SettingCommand) {
+            toggleSetting(command.option)
+            return
+        }
+        if (command is DeviceControlCommand) {
+            runDeviceControl(command.control)
+            return
+        }
         viewModelScope.launch {
             runCatching { command.execute(getApplication()) }
                 .onFailure { _state.value = _state.value.copy(message = "Unable to open ${command.name}") }
         }
+    }
+
+    private fun toggleSetting(option: SettingOption) {
+        val settings = _state.value.settings.toggle(option)
+        preferences.saveSettings(settings)
+        _state.value = _state.value.copy(settings = settings, message = "${option.title}: ${if (settings.isEnabled(option)) "on" else "off"}")
+        menus["configuration"] = menus.getValue("configuration").copy(commands = configurationCommands())
+        publish()
+    }
+
+    private fun runDeviceControl(control: DeviceControl) {
+        when (control) {
+            DeviceControl.FLASHLIGHT -> handleTorchResult(flashlight.toggle())
+            DeviceControl.MEDIA_VOLUME_UP -> adjustVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_RAISE, "Media volume raised")
+            DeviceControl.MEDIA_VOLUME_DOWN -> adjustVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_LOWER, "Media volume lowered")
+            DeviceControl.RING_VOLUME_UP -> adjustVolume(AudioManager.STREAM_RING, AudioManager.ADJUST_RAISE, "Ring volume raised")
+            DeviceControl.RING_VOLUME_DOWN -> adjustVolume(AudioManager.STREAM_RING, AudioManager.ADJUST_LOWER, "Ring volume lowered")
+        }
+    }
+
+    private fun adjustVolume(stream: Int, direction: Int, successMessage: String) {
+        VolumeControls.adjust(getApplication(), stream, direction).fold(
+            onSuccess = { _state.value = _state.value.copy(message = successMessage) },
+            onFailure = { _state.value = _state.value.copy(message = "Volume control is unavailable") },
+        )
+    }
+
+    private fun handleTorchResult(result: TorchResult) {
+        _state.value = when (result) {
+            is TorchResult.Changed -> _state.value.copy(message = "Flashlight ${if (result.enabled) "on" else "off"}")
+            TorchResult.PermissionRequired -> _state.value.copy(requestCameraPermission = true, message = "Camera permission is needed for the flashlight")
+            TorchResult.Unavailable -> _state.value.copy(message = "Flashlight is unavailable on this device")
+            TorchResult.Error -> _state.value.copy(message = "Unable to change the flashlight")
+        }
+    }
+
+    fun onCameraPermissionResult(granted: Boolean) {
+        _state.value = _state.value.copy(requestCameraPermission = false)
+        if (granted) handleTorchResult(flashlight.toggle())
+        else _state.value = _state.value.copy(message = "Camera permission denied; flashlight unavailable")
     }
 
     /** Returns true when launcher navigation consumed the back press. */
