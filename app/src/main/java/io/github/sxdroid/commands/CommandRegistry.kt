@@ -15,7 +15,6 @@ class CommandRegistry(private val context: Context) {
         MenuCommand("menu.apps", "Apps", "Installed launchable applications", listOf("applications", "launch"), "apps"),
         MenuCommand("menu.system", "System", "Settings and device controls", listOf("settings", "wifi", "bluetooth"), "system"),
         MenuCommand("menu.configuration", "Configuration", "Help and safe Android configuration", listOf("config", "help"), "configuration"),
-        MenuCommand("menu.configuration", "Configuration", "Help and safe Android configuration", listOf("config", "help"), "configuration"),
     )
 
     suspend fun installedApplications(): List<Command> = withContext(Dispatchers.Default) {
