@@ -1,6 +1,6 @@
 # SxDroid
 
-SxDroid is a small, keyboard-first Android home launcher inspired by Sxmo's text menu model and dmenu. Its top-level Menu has separate Apps, System, and Configuration entries rather than a generic app palette.
+SxDroid is a small, keyboard-first Android home launcher inspired by Sxmo's text menu model and dmenu. Home is intentionally empty so the wallpaper remains visible; the top-level Menu contains only Apps and System.
 
 ## Build and install
 
@@ -15,12 +15,14 @@ After installation, press Home and choose **SxDroid** as the default launcher. T
 
 ## Usage
 
-- Swipe down from the top edge to open or reset to the top-level Menu. Type in `search` to filter the current menu. Apps contains a separate text-only list of launchable activities.
+- Swipe down from the top edge or press the hardware Menu key to open or reset the top-level Menu. Home is fully transparent and has no persistent menu, status, search, commands, tabs, or gesture help, so the wallpaper remains visible. Hardware navigation also opens the menu before acting. Other edge gestures and volume keys do not open it from home. Type in `search` to filter the current menu. Apps contains a separate text-only list of launchable activities.
 - Tap a row or use Enter/DPAD center to open the selected item.
-- In focused SxDroid, Volume Up/Down selects the previous/next item for short, long, and repeat events.
-- Press Volume Up and Volume Down together to select/open the highlighted item.
-- Back clears a search first, then leaves a nested menu.
+- In focused SxDroid, Volume Up/Down selects the previous/next item for short, long, and repeat events. Apps selections auto-scroll into view.
+- With the menu open, press Volume Up and Volume Down together to select/open the highlighted item.
+- Back clears a search first, then leaves a nested menu, then hides the top-level Menu. A top-edge swipe up also hides the menu.
+- Hardware navigation opens the menu when home is closed before navigating; Enter/center opens the menu first rather than immediately launching its first item. Menu scrolling follows the highlighted row after volume and touch navigation.
 - The System menu opens Android Settings, Wi-Fi, Bluetooth, Display, and Sound pages.
+- Configuration is intentionally not shown until it has functional settings to expose.
 - Long-press an app or command row, or the launcher surface, for the selected command context menu including Android App info where applicable.
 - Notifications and Scripts/Commands are not shown: this ordinary launcher has no notification-listener approval or shell/privileged execution capability.
 
@@ -41,7 +43,7 @@ Gestures are recognized on the launcher surface. They are configured in the in-m
 | Bottom-left / bottom-right corner diagonal | Lock fallback / Rotate fallback |
 | Stationary long-press | Context actions for the selected item |
 
-The `[?] gesture map` control is always visible and opens the complete mapping in-app. Recognition is one-finger only, starts or ends inside a configurable edge band, and requires a configurable minimum travel distance. Bindings, edge size, swipe threshold, long-press duration, and long-press slop are represented by `EdgeGestureConfig` in `LauncherConfig`, ready for a future TOML loader.
+Recognition is one-finger only, starts or ends inside a configurable edge band, and requires a configurable minimum travel distance. Bindings, edge size, swipe threshold, long-press duration, and long-press slop are represented by `EdgeGestureConfig` in `LauncherConfig`, ready for a future TOML loader.
 
 Gestures and volume interception exist only inside SxDroid's focused activity and are one-finger only. Android does not let an ordinary launcher safely intercept Power globally, inject Backspace/Return/navigation into another app, read notifications without user-granted notification-listener access, or execute shell commands. The dual-volume chord is the focused-activity substitute for Sxmo's Power select. Backspace and Enter therefore affect SxDroid's search/menu only. Brightness opens Display settings, Lock opens Security settings, and Rotate opens Display settings: all are safe fallbacks because direct control requires privileges SxDroid does not request.
 
@@ -49,7 +51,7 @@ Gestures and volume interception exist only inside SxDroid's focused activity an
 
 Sxmo is a Linux mobile environment, not an Android launcher. Its [user manual](https://sxmo.org/docs/user/sxmo.7.html#MENUS) documents dmenu/bemenu/wofi menus, Volume Raise/Lower navigation, Power selection, separate Apps and Config menus, context menus, and notifications where its services are available. Its [gesture documentation](https://sxmo.org/docs/user/sxmo.7.html#GESTURES) documents the upstream edge semantics. SxDroid preserves the text-menu organization while documenting Android substitutions instead of claiming Sxmo's global Power, shell, modem, window-management, or notification behavior.
 
-The header shows the local time, battery state, and network transport. It requires only `ACCESS_NETWORK_STATE`; unavailable information is shown as unknown.
+Battery and network monitoring retain the existing low-permission implementation, but status text is not drawn over the wallpaper-first home or menu.
 
 ## Design and implementation
 
@@ -57,7 +59,7 @@ The header shows the local time, battery state, and network transport. It requir
 - `launcher/` owns Compose state, package discovery/cache, package/battery receivers, and network callbacks.
 - `menu/`, `input/`, and `config/` isolate nested navigation, configurable key mappings, and a TOML-ready in-memory configuration model.
 - Application discovery uses normal `PackageManager` launcher queries and manifest package visibility. It excludes SxDroid itself to avoid launching the Home activity recursively.
-- The clock only runs while the activity lifecycle is started and wakes at minute boundaries. Receivers and network callbacks are released with the view model.
+- Package, battery, and network callbacks are released with the view model.
 
 ## GrapheneOS and independence
 

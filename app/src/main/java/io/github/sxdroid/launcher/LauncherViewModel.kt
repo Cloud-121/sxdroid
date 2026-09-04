@@ -31,6 +31,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 data class LauncherState(
+    val menuVisible: Boolean = false,
+    val menuId: String = "root",
     val title: String = "home",
     val query: String = "",
     val commands: List<Command> = emptyList(),
@@ -51,6 +53,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     private val _status = MutableStateFlow(DeviceStatus())
     val status: StateFlow<DeviceStatus> = _status.asStateFlow()
     var searchFocused = false
+    val menuVisible: Boolean get() = _state.value.menuVisible
 
     private val packageReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -160,7 +163,9 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun requestContext(index: Int) {
-        if (index in _state.value.commands.indices) _state.value = _state.value.copy(contextIndex = index)
+        if (_state.value.menuVisible && index in _state.value.commands.indices) {
+            _state.value = _state.value.copy(contextIndex = index)
+        }
     }
 
     fun dismissContext() { _state.value = _state.value.copy(contextIndex = null) }
@@ -169,23 +174,40 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     fun dismissActionMenu() { _state.value = _state.value.copy(actionMenuVisible = false) }
 
     fun closeAllMenus(): Boolean {
+        val hadMenu = _state.value.menuVisible
         val hadQuery = _state.value.query.isNotEmpty()
+        val hadDialogs = _state.value.contextIndex != null || _state.value.actionMenuVisible
         val closedMenus = navigator.closeAll()
-        val consumed = hadQuery || closedMenus
+        val consumed = hadMenu || hadQuery || hadDialogs || closedMenus
         if (consumed) {
-            _state.value = _state.value.copy(query = "", selectedIndex = 0, message = null)
+            _state.value = _state.value.copy(
+                menuVisible = false,
+                query = "",
+                selectedIndex = 0,
+                message = null,
+                contextIndex = null,
+                actionMenuVisible = false,
+            )
             publish()
         }
         return consumed
     }
 
-    fun resetToTopLevel() {
+    fun showMenu() {
         navigator.closeAll()
-        _state.value = _state.value.copy(query = "", selectedIndex = 0, message = null)
+        _state.value = _state.value.copy(
+            menuVisible = true,
+            query = "",
+            selectedIndex = 0,
+            message = null,
+            contextIndex = null,
+            actionMenuVisible = false,
+        )
         publish()
     }
 
     fun move(delta: Int) {
+        if (!_state.value.menuVisible) return
         val commands = _state.value.commands
         if (commands.isEmpty()) return
         val index = (_state.value.selectedIndex + delta).floorMod(commands.size)
@@ -193,10 +215,11 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun highlight(index: Int) {
-        if (index in _state.value.commands.indices) _state.value = _state.value.copy(selectedIndex = index)
+        if (_state.value.menuVisible && index in _state.value.commands.indices) _state.value = _state.value.copy(selectedIndex = index)
     }
 
     fun select(index: Int = _state.value.selectedIndex) {
+        if (!_state.value.menuVisible) return
         val command = _state.value.commands.getOrNull(index) ?: return
         if (command is MenuCommand) {
             navigator.enter(command.menuId)
@@ -212,6 +235,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
 
     /** Returns true when launcher navigation consumed the back press. */
     fun back(): Boolean {
+        if (!_state.value.menuVisible) return false
         if (_state.value.query.isNotEmpty()) {
             setQuery("")
             return true
@@ -221,13 +245,19 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             publish()
             return true
         }
-        return false
+        return closeAllMenus()
     }
 
     private fun publish(loading: Boolean = _state.value.loading) {
         val current = navigator.current
         val commands = CommandRanker.rank(current.commands, _state.value.query)
-        _state.value = _state.value.copy(title = current.title, commands = commands, selectedIndex = 0.coerceAtMost((commands.size - 1).coerceAtLeast(0)), loading = loading)
+        _state.value = _state.value.copy(
+            menuId = current.id,
+            title = current.title,
+            commands = commands,
+            selectedIndex = 0.coerceAtMost((commands.size - 1).coerceAtLeast(0)),
+            loading = loading,
+        )
     }
 
     private fun updateBattery(intent: Intent) {

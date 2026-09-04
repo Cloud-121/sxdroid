@@ -8,14 +8,15 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.util.Locale
 
+internal fun builtInMenuCommands(): List<Command> = listOf(
+    MenuCommand("menu.apps", "Apps", "Installed launchable applications", listOf("applications", "launch"), "apps"),
+    MenuCommand("menu.system", "System", "Settings and device controls", listOf("settings", "wifi", "bluetooth"), "system"),
+)
+
 class CommandRegistry(private val context: Context) {
     private val packageManager get() = context.packageManager
 
-    fun builtIns(): List<Command> = listOf(
-        MenuCommand("menu.apps", "Apps", "Installed launchable applications", listOf("applications", "launch"), "apps"),
-        MenuCommand("menu.system", "System", "Settings and device controls", listOf("settings", "wifi", "bluetooth"), "system"),
-        MenuCommand("menu.configuration", "Configuration", "Help and safe Android configuration", listOf("config", "help"), "configuration"),
-    )
+    fun builtIns(): List<Command> = builtInMenuCommands()
 
     suspend fun installedApplications(): List<Command> = withContext(Dispatchers.Default) {
         val query = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)

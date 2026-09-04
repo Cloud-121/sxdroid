@@ -15,6 +15,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -22,6 +23,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.OutlinedTextField
@@ -31,11 +33,11 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Modifier
@@ -56,13 +58,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.ExperimentalComposeUiApi
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
-import androidx.lifecycle.compose.LocalLifecycleOwner
 import io.github.sxdroid.config.LauncherConfig
-import io.github.sxdroid.input.KeyMapper
 import io.github.sxdroid.input.LauncherAction
-import io.github.sxdroid.input.PressKind
 import io.github.sxdroid.input.DualVolumeController
 import io.github.sxdroid.input.VolumeKey
 import io.github.sxdroid.input.EdgeGestureAction
@@ -70,15 +67,10 @@ import io.github.sxdroid.input.EdgeGestureClassifier
 import io.github.sxdroid.input.GestureBounds
 import io.github.sxdroid.input.GesturePoint
 import io.github.sxdroid.launcher.LauncherViewModel
-import io.github.sxdroid.system.DeviceStatus
-import kotlinx.coroutines.delay
-import java.text.DateFormat
-import java.util.Date
 import androidx.compose.foundation.isSystemInDarkTheme
 
 class MainActivity : ComponentActivity() {
     private val launcher: LauncherViewModel by viewModels()
-    private val keyMapper = KeyMapper(LauncherConfig().keyBindings)
     private val volumeController = DualVolumeController()
     private val keyHandler = Handler(Looper.getMainLooper())
     private var destroyed = false
@@ -113,16 +105,30 @@ class MainActivity : ComponentActivity() {
             scheduleVolumeTimeout()
             return true // Never hand focused-launcher navigation volume keys to the system stream.
         }
-        if (event.action == KeyEvent.ACTION_DOWN && !launcher.searchFocused &&
-            (event.keyCode == KeyEvent.KEYCODE_DPAD_CENTER || event.keyCode == KeyEvent.KEYCODE_ENTER)
-        ) {
-            perform(keyMapper.actionFor(event.keyCode, PressKind.SHORT))
+        val action = when (event.keyCode) {
+            KeyEvent.KEYCODE_MENU -> null
+            KeyEvent.KEYCODE_DPAD_UP -> LauncherAction.PREVIOUS
+            KeyEvent.KEYCODE_DPAD_DOWN -> LauncherAction.NEXT
+            KeyEvent.KEYCODE_DPAD_LEFT -> LauncherAction.BACK
+            KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> LauncherAction.SELECT
+            else -> null
+        }
+        if (event.keyCode == KeyEvent.KEYCODE_MENU) {
+            if (event.action == KeyEvent.ACTION_DOWN) launcher.showMenu()
+            return true
+        }
+        if (action != null && !launcher.searchFocused) {
+            if (event.action == KeyEvent.ACTION_DOWN) perform(action)
             return true
         }
         return super.dispatchKeyEvent(event)
     }
 
-    private fun perform(action: LauncherAction) {
+    private fun perform(action: LauncherAction, opensMenuWhenClosed: Boolean = true) {
+        if (!launcher.menuVisible && opensMenuWhenClosed) {
+            launcher.showMenu()
+            if (action == LauncherAction.SELECT || action == LauncherAction.CONTEXT || action == LauncherAction.BACK) return
+        }
         when (action) {
             LauncherAction.PREVIOUS -> launcher.move(-1)
             LauncherAction.NEXT -> launcher.move(1)
@@ -133,7 +139,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun performVolumeActions(actions: List<LauncherAction>) = actions.forEach(::perform)
+    private fun performVolumeActions(actions: List<LauncherAction>) = actions.forEach { perform(it, opensMenuWhenClosed = false) }
 
     private fun scheduleVolumeTimeout() {
         keyHandler.removeCallbacks(volumeTimeout)
@@ -153,13 +159,12 @@ class MainActivity : ComponentActivity() {
 @OptIn(ExperimentalComposeUiApi::class)
 private fun LauncherScreen(viewModel: LauncherViewModel) {
     val state by viewModel.state.collectAsState()
-    val status by viewModel.status.collectAsState()
-    val time by minuteClock()
     val focusRequester = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
     val classifier = remember { EdgeGestureClassifier(LauncherConfig().edgeGestures) }
-    var showGestureHelp by remember { mutableStateOf(false) }
     var showKeyboardRequest by remember { mutableStateOf(false) }
+    val listState = rememberLazyListState()
+    val selectedIndex by rememberUpdatedState(state.selectedIndex)
     LaunchedEffect(showKeyboardRequest) {
         if (showKeyboardRequest) {
             focusRequester.requestFocus()
@@ -185,7 +190,7 @@ private fun LauncherScreen(viewModel: LauncherViewModel) {
                 durationMillis = end.uptimeMillis - start.uptimeMillis,
                 pointerCount = pointerCount,
             )) {
-                EdgeGestureAction.SHOW_MENU -> { viewModel.resetToTopLevel(); showKeyboardRequest = true }
+                EdgeGestureAction.SHOW_MENU -> viewModel.showMenu()
                 EdgeGestureAction.CLOSE_MENUS -> { viewModel.closeAllMenus(); focusRequester.freeFocus(); keyboard?.hide() }
                 EdgeGestureAction.SELECT, EdgeGestureAction.RIGHT_KEY -> viewModel.select()
                 EdgeGestureAction.BACKSPACE -> viewModel.deleteSearchCharacter()
@@ -196,49 +201,55 @@ private fun LauncherScreen(viewModel: LauncherViewModel) {
                 EdgeGestureAction.BRIGHTNESS_DOWN -> viewModel.openBrightnessControls(increase = false)
                 EdgeGestureAction.LOCK_FALLBACK -> viewModel.openLockFallback()
                 EdgeGestureAction.ROTATE_FALLBACK -> viewModel.openRotateFallback()
-                EdgeGestureAction.OPEN_CONTEXT -> viewModel.requestContext(state.selectedIndex)
+                EdgeGestureAction.OPEN_CONTEXT -> viewModel.requestContext(selectedIndex)
                 EdgeGestureAction.OPEN_ACTION_MENU -> viewModel.showActionMenu()
                 null -> Unit
             }
         }
     }
-    Column(gestureModifier.fillMaxSize().padding(horizontal = 14.dp, vertical = 12.dp)) {
-        StatusHeader(time, status)
-        Text(
-            text = "[${state.title}] ${if (state.loading) "loading" else "${state.commands.size} commands"}",
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(top = 12.dp, bottom = 4.dp),
-        )
-        OutlinedTextField(
-            value = state.query,
-            onValueChange = viewModel::setQuery,
-            modifier = Modifier.fillMaxWidth().focusRequester(focusRequester).onFocusChanged { viewModel.searchFocused = it.isFocused }
-                .semantics { contentDescription = "Search commands" },
-            singleLine = true,
-            label = { Text("search") },
-            placeholder = { Text("type to filter") },
-        )
-        state.message?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 6.dp)) }
-        LazyColumn(
-            modifier = Modifier.fillMaxWidth().weight(1f),
-            contentPadding = PaddingValues(vertical = 8.dp),
-        ) {
-            itemsIndexed(state.commands, key = { _, command -> command.id }) { index, command ->
-                val selected = index == state.selectedIndex
-                CommandRow(
-                    selected = selected,
-                    name = command.name,
-                    description = command.description,
-                    onClick = { viewModel.select(index) },
-                    onLongClick = { viewModel.highlight(index); viewModel.requestContext(index) },
-                )
+    Box(gestureModifier.fillMaxSize()) {
+        if (state.menuVisible) {
+            LaunchedEffect(state.menuId, state.selectedIndex, state.menuVisible) {
+                if (state.selectedIndex in state.commands.indices) listState.scrollToItem(state.selectedIndex)
+            }
+            Surface(
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f),
+                modifier = Modifier.fillMaxSize(),
+            ) {
+                Column(Modifier.fillMaxSize().padding(horizontal = 14.dp, vertical = 12.dp)) {
+                    Text(
+                        text = state.title,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(bottom = 4.dp),
+                    )
+                    OutlinedTextField(
+                        value = state.query,
+                        onValueChange = viewModel::setQuery,
+                        modifier = Modifier.fillMaxWidth().focusRequester(focusRequester).onFocusChanged { viewModel.searchFocused = it.isFocused }
+                            .semantics { contentDescription = "Search commands" },
+                        singleLine = true,
+                        placeholder = { Text("search") },
+                    )
+                    state.message?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 6.dp)) }
+                    LazyColumn(
+                        state = listState,
+                        modifier = Modifier.fillMaxWidth().weight(1f),
+                        contentPadding = PaddingValues(vertical = 8.dp),
+                    ) {
+                        itemsIndexed(state.commands, key = { _, command -> command.id }) { index, command ->
+                            val selected = index == state.selectedIndex
+                            CommandRow(
+                                selected = selected,
+                                name = command.name,
+                                description = command.description,
+                                onClick = { viewModel.highlight(index); viewModel.select(index) },
+                                onLongClick = { viewModel.highlight(index); viewModel.requestContext(index) },
+                            )
+                        }
+                    }
+                }
             }
         }
-        Text("vol up/down: prev/next  both: open  hold up: context  back: up", fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
-        TextButton(
-            onClick = { showGestureHelp = true },
-            modifier = Modifier.semantics { contentDescription = "Open gesture help" },
-        ) { Text("[?] gesture map", fontSize = 12.sp) }
     }
     state.contextIndex?.let { index ->
         state.commands.getOrNull(index)?.let { command ->
@@ -259,7 +270,6 @@ private fun LauncherScreen(viewModel: LauncherViewModel) {
         onHideKeyboard = { viewModel.dismissActionMenu(); focusRequester.freeFocus(); keyboard?.hide() },
         onShowKeyboard = { viewModel.dismissActionMenu(); showKeyboardRequest = true },
     )
-    if (showGestureHelp) GestureHelpDialog(onDismiss = { showGestureHelp = false })
 }
 
 @Composable
@@ -303,37 +313,6 @@ private fun FourActionDialog(
 }
 
 @Composable
-private fun GestureHelpDialog(onDismiss: () -> Unit) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("SxDroid gesture map") },
-        text = {
-            Text(
-                "top: left/right brightness; up close; down show\n" +
-                    "left: up/down previous/next; right previous; left back\n" +
-                    "right: up/down volume up/down; left next; right select\n" +
-                    "bottom long: left Backspace; right Enter/select\n" +
-                    "bottom vertical: action menu\n" +
-                    "bottom-left diagonal: Lock fallback; bottom-right: Rotate fallback\n" +
-                    "hold: action menu",
-            )
-        },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } },
-    )
-}
-
-@Composable
-private fun StatusHeader(time: String, status: DeviceStatus) {
-    val battery = status.batteryPercent?.let { "$it%${if (status.charging) "+" else ""}" } ?: "battery ?"
-    Row(
-        modifier = Modifier.fillMaxWidth().semantics { contentDescription = "$time, $battery, ${status.network}" },
-    ) {
-        Text(time, fontWeight = FontWeight.Bold)
-        Text("  $battery  ${status.network}", modifier = Modifier.weight(1f))
-    }
-}
-
-@Composable
 @OptIn(ExperimentalFoundationApi::class)
 private fun CommandRow(selected: Boolean, name: String, description: String, onClick: () -> Unit, onLongClick: () -> Unit) {
     val marker = if (selected) ">" else " "
@@ -353,29 +332,6 @@ private fun CommandRow(selected: Boolean, name: String, description: String, onC
 }
 
 @Composable
-private fun minuteClock(): androidx.compose.runtime.State<String> {
-    val lifecycle = LocalLifecycleOwner.current.lifecycle
-    var active by remember { mutableStateOf(lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) }
-    val value = remember { mutableStateOf(formatTime()) }
-    DisposableEffect(lifecycle) {
-        val observer = LifecycleEventObserver { _, event ->
-            active = event != Lifecycle.Event.ON_STOP && event != Lifecycle.Event.ON_DESTROY
-        }
-        lifecycle.addObserver(observer)
-        onDispose { lifecycle.removeObserver(observer) }
-    }
-    LaunchedEffect(active) {
-        while (active) {
-            value.value = formatTime()
-            delay(60_000L - System.currentTimeMillis() % 60_000L + 10L)
-        }
-    }
-    return value
-}
-
-private fun formatTime(): String = DateFormat.getTimeInstance(DateFormat.SHORT).format(Date())
-
-@Composable
 private fun SxDroidTheme(content: @Composable () -> Unit) {
     MaterialTheme(
         colorScheme = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme(),
@@ -385,6 +341,6 @@ private fun SxDroidTheme(content: @Composable () -> Unit) {
             titleMedium = it.titleMedium.copy(fontFamily = FontFamily.Monospace),
         ) },
     ) {
-        Surface(color = MaterialTheme.colorScheme.surface, content = content)
+        content()
     }
 }
