@@ -29,4 +29,5 @@ class MenuNavigatorTest {
         assertEquals(1, navigator.depth)
         assertFalse(navigator.closeAll())
     }
+
 }

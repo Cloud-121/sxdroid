@@ -2,7 +2,7 @@ package io.github.sxdroid.input
 
 import android.view.KeyEvent
 
-enum class LauncherAction { PREVIOUS, NEXT, SELECT, BACK, NONE }
+enum class LauncherAction { PREVIOUS, NEXT, SELECT, CONTEXT, BACK, NONE }
 enum class PressKind { SHORT, LONG, REPEAT }
 
 data class KeyBindings(

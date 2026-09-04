@@ -11,6 +11,10 @@ object AndroidActions {
         context.startActivity(Intent(Settings.ACTION_DISPLAY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }
 
+    fun openSecuritySettings(context: Context): Result<Unit> = runCatching {
+        context.startActivity(Intent(Settings.ACTION_SECURITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    }
+
     fun openApplicationDetails(context: Context, packageName: String): Result<Unit> = runCatching {
         context.startActivity(
             Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName"))

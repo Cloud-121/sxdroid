@@ -63,3 +63,12 @@ class MenuCommand(
 ) : Command {
     override suspend fun execute(context: Context) = Unit
 }
+
+class InfoCommand(
+    override val id: String,
+    override val name: String,
+    override val description: String,
+    override val keywords: List<String> = emptyList(),
+) : Command {
+    override suspend fun execute(context: Context) = Unit
+}

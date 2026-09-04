@@ -37,6 +37,8 @@ data class LauncherState(
     val selectedIndex: Int = 0,
     val loading: Boolean = true,
     val message: String? = null,
+    val contextIndex: Int? = null,
+    val actionMenuVisible: Boolean = false,
 )
 
 class LauncherViewModel(application: Application) : AndroidViewModel(application) {
@@ -71,15 +73,17 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     }
 
     private fun buildMenus() {
-        val system = CommandMenu("system", "system", listOf(
+        val system = CommandMenu("system", "System", listOf(
             OpenIntentCommand("system.settings", "Settings", "Android settings", listOf("system", "preferences"), Intent(Settings.ACTION_SETTINGS)),
             OpenIntentCommand("system.wifi", "Wi-Fi", "Wi-Fi settings", listOf("wireless", "network"), Intent(Settings.ACTION_WIFI_SETTINGS)),
             OpenIntentCommand("system.bluetooth", "Bluetooth", "Bluetooth settings", listOf("wireless", "devices"), Intent(Settings.ACTION_BLUETOOTH_SETTINGS)),
             OpenIntentCommand("system.display", "Display", "Display settings", listOf("screen", "brightness"), Intent(Settings.ACTION_DISPLAY_SETTINGS)),
             OpenIntentCommand("system.sound", "Sound", "Sound settings", listOf("audio", "volume"), Intent(Settings.ACTION_SOUND_SETTINGS)),
         ))
-        val root = CommandMenu("root", "home", registry.builtIns())
+        val apps = CommandMenu("apps", "Apps", emptyList())
+        val root = CommandMenu("root", "Menu", registry.builtIns())
         menus[root.id] = root
+        menus[apps.id] = apps
         menus[system.id] = system
         navigator = MenuNavigator(root, menus)
     }
@@ -103,8 +107,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     private fun refreshApplications() = viewModelScope.launch {
         _state.value = _state.value.copy(loading = true)
         applications = registry.installedApplications()
-        val root = menus.getValue("root").copy(commands = registry.builtIns() + applications)
-        menus[root.id] = root
+        menus["apps"] = menus.getValue("apps").copy(commands = applications)
         publish(loading = false)
     }
 
@@ -125,6 +128,25 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         )
     }
 
+    fun openLockFallback() = openFallback("Lock is unavailable to an ordinary launcher; opening Security settings") {
+        AndroidActions.openSecuritySettings(getApplication())
+    }
+
+    fun openRotateFallback() = openFallback("Rotation is unavailable to an ordinary launcher; opening Display settings") {
+        AndroidActions.openDisplayControls(getApplication())
+    }
+
+    fun reportGlobalWindowAction(action: String) {
+        _state.value = _state.value.copy(message = "$action window is unavailable to an ordinary Android launcher")
+    }
+
+    private fun openFallback(message: String, action: () -> Result<Unit>) {
+        action().fold(
+            onSuccess = { _state.value = _state.value.copy(message = message) },
+            onFailure = { _state.value = _state.value.copy(message = "Android settings fallback is unavailable") },
+        )
+    }
+
     fun openApplicationDetails(index: Int) {
         val command = _state.value.commands.getOrNull(index) as? LaunchApplicationCommand ?: return
         AndroidActions.openApplicationDetails(getApplication(), command.packageName)
@@ -132,6 +154,19 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun isApplication(index: Int): Boolean = _state.value.commands.getOrNull(index) is LaunchApplicationCommand
+
+    fun openSelectedContext() {
+        requestContext(_state.value.selectedIndex)
+    }
+
+    fun requestContext(index: Int) {
+        if (index in _state.value.commands.indices) _state.value = _state.value.copy(contextIndex = index)
+    }
+
+    fun dismissContext() { _state.value = _state.value.copy(contextIndex = null) }
+
+    fun showActionMenu() { _state.value = _state.value.copy(actionMenuVisible = true) }
+    fun dismissActionMenu() { _state.value = _state.value.copy(actionMenuVisible = false) }
 
     fun closeAllMenus(): Boolean {
         val hadQuery = _state.value.query.isNotEmpty()
@@ -142,6 +177,12 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             publish()
         }
         return consumed
+    }
+
+    fun resetToTopLevel() {
+        navigator.closeAll()
+        _state.value = _state.value.copy(query = "", selectedIndex = 0, message = null)
+        publish()
     }
 
     fun move(delta: Int) {

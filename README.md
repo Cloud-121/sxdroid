@@ -1,6 +1,6 @@
 # SxDroid
 
-SxDroid is a small, keyboard-first Android home launcher inspired by the sparse, text-oriented interaction of [Sxmo](https://sxmo.org/) and dmenu. Version 0.1 is a searchable command palette: launch applications, move with hardware volume keys, and reach common Android system settings without an icon grid.
+SxDroid is a small, keyboard-first Android home launcher inspired by Sxmo's text menu model and dmenu. Its top-level Menu has separate Apps, System, and Configuration entries rather than a generic app palette.
 
 ## Build and install
 
@@ -15,13 +15,14 @@ After installation, press Home and choose **SxDroid** as the default launcher. T
 
 ## Usage
 
-- Type in `search` to filter every command. An empty query lists all launchable apps and the System menu.
+- Swipe down from the top edge to open or reset to the top-level Menu. Type in `search` to filter the current menu. Apps contains a separate text-only list of launchable activities.
 - Tap a row or use Enter/DPAD center to open the selected item.
-- Volume up/down select the previous/next item. Key-repeat continues moving and volume is not changed while SxDroid is focused.
-- Press Volume Up and Volume Down together to select/open the highlighted item without using the power button.
+- In focused SxDroid, Volume Up/Down selects the previous/next item for short, long, and repeat events.
+- Press Volume Up and Volume Down together to select/open the highlighted item.
 - Back clears a search first, then leaves a nested menu.
 - The System menu opens Android Settings, Wi-Fi, Bluetooth, Display, and Sound pages.
-- Long-press any application or command for its context menu.
+- Long-press an app or command row, or the launcher surface, for the selected command context menu including Android App info where applicable.
+- Notifications and Scripts/Commands are not shown: this ordinary launcher has no notification-listener approval or shell/privileged execution capability.
 
 ### Edge gestures
 
@@ -29,17 +30,24 @@ Gestures are recognized on the launcher surface. They are configured in the in-m
 
 | Gesture | Action |
 | --- | --- |
-| Top edge, down | Open/focus the unified command palette |
-| Upward swipe ending at the top edge | Clear search and close all nested menus |
-| Bottom edge, left-to-right | Open the selected command |
-| Bottom edge, right-to-left | Delete one search character; otherwise back one menu |
-| Right edge, down / up | Next / previous command |
-| Top edge, left-to-right / right-to-left | Increase / decrease brightness via Android Display settings |
-| Long-press a row or the launcher surface | Open context actions for the selected item |
+| Top edge, left / right | Decrease / increase brightness (Display settings fallback) |
+| Top edge, up / down | Hide or close the menu / show and focus the menu |
+| Left edge, up / down | Previous / next workspace or menu item |
+| Left edge, right / left | Previous workspace or menu item / left-key, back-like action |
+| Right edge, up / down | Scroll up, volume-up equivalent / scroll down, volume-down equivalent |
+| Right edge, left / right | Next workspace or menu item / right-key action (select) |
+| Bottom edge, long left / long right swipe | Backspace / Enter or select |
+| Bottom edge, vertical in either direction | Four-action menu: Close window, Kill window, Hide keyboard, Show keyboard |
+| Bottom-left / bottom-right corner diagonal | Lock fallback / Rotate fallback |
+| Stationary long-press | Context actions for the selected item |
 
 The `[?] gesture map` control is always visible and opens the complete mapping in-app. Recognition is one-finger only, starts or ends inside a configurable edge band, and requires a configurable minimum travel distance. Bindings, edge size, swipe threshold, long-press duration, and long-press slop are represented by `EdgeGestureConfig` in `LauncherConfig`, ready for a future TOML loader.
 
-Gestures only exist inside SxDroid's focused activity. Android does not let an ordinary launcher inject Backspace, Return, or navigation into another app, so bottom-edge editing affects SxDroid's own search field only and otherwise uses launcher navigation. Likewise, changing brightness directly requires special settings access that SxDroid does not request; top-edge brightness gestures open Android's supported Display settings fallback and report if it is unavailable.
+Gestures and volume interception exist only inside SxDroid's focused activity and are one-finger only. Android does not let an ordinary launcher safely intercept Power globally, inject Backspace/Return/navigation into another app, read notifications without user-granted notification-listener access, or execute shell commands. The dual-volume chord is the focused-activity substitute for Sxmo's Power select. Backspace and Enter therefore affect SxDroid's search/menu only. Brightness opens Display settings, Lock opens Security settings, and Rotate opens Display settings: all are safe fallbacks because direct control requires privileges SxDroid does not request.
+
+## Sxmo reference
+
+Sxmo is a Linux mobile environment, not an Android launcher. Its [user manual](https://sxmo.org/docs/user/sxmo.7.html#MENUS) documents dmenu/bemenu/wofi menus, Volume Raise/Lower navigation, Power selection, separate Apps and Config menus, context menus, and notifications where its services are available. Its [gesture documentation](https://sxmo.org/docs/user/sxmo.7.html#GESTURES) documents the upstream edge semantics. SxDroid preserves the text-menu organization while documenting Android substitutions instead of claiming Sxmo's global Power, shell, modem, window-management, or notification behavior.
 
 The header shows the local time, battery state, and network transport. It requires only `ACCESS_NETWORK_STATE`; unavailable information is shown as unknown.
 
@@ -57,4 +65,4 @@ SxDroid is intended to work as an ordinary launcher on GrapheneOS as well as AOS
 
 ## Limitations and plans
 
-Version 0.1 deliberately does not show application icons, manage widgets, read notifications, change quick settings, or persist configuration. Android does not allow an ordinary launcher to change brightness or quick settings directly: the top-horizontal gesture opens the existing Display/System Settings fallback, and vendor settings activities may be absent. These commands fail gracefully. Planned work includes TOML configuration, more configurable menu entries and bindings, and optional launcher conveniences that preserve the low-permission/offline design.
+Version 0.1 deliberately does not show application icons, manage widgets, read notifications, run shell commands, change quick settings, or persist configuration. Vendor Settings activities can be absent, so all settings fallbacks fail gracefully. Planned work includes TOML configuration, more configurable menu entries and bindings, and optional launcher conveniences that preserve the low-permission/offline design.

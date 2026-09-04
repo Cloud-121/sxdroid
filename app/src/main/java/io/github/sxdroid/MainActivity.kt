@@ -1,6 +1,9 @@
 package io.github.sxdroid
 
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
 import android.view.KeyEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
@@ -51,6 +54,8 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -58,6 +63,8 @@ import io.github.sxdroid.config.LauncherConfig
 import io.github.sxdroid.input.KeyMapper
 import io.github.sxdroid.input.LauncherAction
 import io.github.sxdroid.input.PressKind
+import io.github.sxdroid.input.DualVolumeController
+import io.github.sxdroid.input.VolumeKey
 import io.github.sxdroid.input.EdgeGestureAction
 import io.github.sxdroid.input.EdgeGestureClassifier
 import io.github.sxdroid.input.GestureBounds
@@ -72,9 +79,13 @@ import androidx.compose.foundation.isSystemInDarkTheme
 class MainActivity : ComponentActivity() {
     private val launcher: LauncherViewModel by viewModels()
     private val keyMapper = KeyMapper(LauncherConfig().keyBindings)
-    private var volumeUpDown = false
-    private var volumeDownDown = false
-    private var dualVolumeSelected = false
+    private val volumeController = DualVolumeController()
+    private val keyHandler = Handler(Looper.getMainLooper())
+    private var destroyed = false
+    private val volumeTimeout = Runnable {
+        if (!destroyed) performVolumeActions(volumeController.onTime(SystemClock.uptimeMillis()))
+        scheduleVolumeTimeout()
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -92,29 +103,15 @@ class MainActivity : ComponentActivity() {
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         val volumeKey = event.keyCode == KeyEvent.KEYCODE_VOLUME_UP || event.keyCode == KeyEvent.KEYCODE_VOLUME_DOWN
-        if (volumeKey) {
+        if (volumeKey && hasWindowFocus() && !destroyed) {
+            val key = if (event.keyCode == KeyEvent.KEYCODE_VOLUME_UP) VolumeKey.UP else VolumeKey.DOWN
             if (event.action == KeyEvent.ACTION_DOWN) {
-                if (event.keyCode == KeyEvent.KEYCODE_VOLUME_UP) volumeUpDown = true
-                if (event.keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) volumeDownDown = true
-                if (volumeUpDown && volumeDownDown) {
-                    if (!dualVolumeSelected) {
-                        dualVolumeSelected = true
-                        perform(LauncherAction.SELECT)
-                    }
-                } else {
-                    val kind = when {
-                        event.repeatCount > 0 -> PressKind.REPEAT
-                        event.isLongPress -> PressKind.LONG
-                        else -> PressKind.SHORT
-                    }
-                    perform(keyMapper.actionFor(event.keyCode, kind))
-                }
+                performVolumeActions(volumeController.onDown(key, SystemClock.uptimeMillis(), event.isLongPress))
             } else if (event.action == KeyEvent.ACTION_UP) {
-                if (event.keyCode == KeyEvent.KEYCODE_VOLUME_UP) volumeUpDown = false
-                if (event.keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) volumeDownDown = false
-                if (!volumeUpDown && !volumeDownDown) dualVolumeSelected = false
+                performVolumeActions(volumeController.onUp(key, SystemClock.uptimeMillis()))
             }
-            return true // Never hand launcher navigation volume keys to the system volume stream.
+            scheduleVolumeTimeout()
+            return true // Never hand focused-launcher navigation volume keys to the system stream.
         }
         if (event.action == KeyEvent.ACTION_DOWN && !launcher.searchFocused &&
             (event.keyCode == KeyEvent.KEYCODE_DPAD_CENTER || event.keyCode == KeyEvent.KEYCODE_ENTER)
@@ -130,21 +127,47 @@ class MainActivity : ComponentActivity() {
             LauncherAction.PREVIOUS -> launcher.move(-1)
             LauncherAction.NEXT -> launcher.move(1)
             LauncherAction.SELECT -> launcher.select()
+            LauncherAction.CONTEXT -> launcher.openSelectedContext()
             LauncherAction.BACK -> launcher.back()
             LauncherAction.NONE -> Unit
         }
     }
+
+    private fun performVolumeActions(actions: List<LauncherAction>) = actions.forEach(::perform)
+
+    private fun scheduleVolumeTimeout() {
+        keyHandler.removeCallbacks(volumeTimeout)
+        volumeController.nextDeadlineMillis()?.let { keyHandler.postDelayed(volumeTimeout, (it - SystemClock.uptimeMillis()).coerceAtLeast(0L)) }
+    }
+
+    override fun onDestroy() {
+        destroyed = true
+        keyHandler.removeCallbacks(volumeTimeout)
+        volumeController.clear()
+        super.onDestroy()
+    }
+
 }
 
 @Composable
+@OptIn(ExperimentalComposeUiApi::class)
 private fun LauncherScreen(viewModel: LauncherViewModel) {
     val state by viewModel.state.collectAsState()
     val status by viewModel.status.collectAsState()
     val time by minuteClock()
     val focusRequester = remember { FocusRequester() }
+    val keyboard = LocalSoftwareKeyboardController.current
     val classifier = remember { EdgeGestureClassifier(LauncherConfig().edgeGestures) }
-    var contextIndex by remember { mutableStateOf<Int?>(null) }
     var showGestureHelp by remember { mutableStateOf(false) }
+    var showKeyboardRequest by remember { mutableStateOf(false) }
+    LaunchedEffect(showKeyboardRequest) {
+        if (showKeyboardRequest) {
+            focusRequester.requestFocus()
+            androidx.compose.runtime.withFrameNanos { }
+            keyboard?.show()
+            showKeyboardRequest = false
+        }
+    }
     val gestureModifier = Modifier.pointerInput(classifier, viewModel.searchFocused) {
         awaitEachGesture {
             val start = awaitFirstDown(requireUnconsumed = false)
@@ -162,15 +185,19 @@ private fun LauncherScreen(viewModel: LauncherViewModel) {
                 durationMillis = end.uptimeMillis - start.uptimeMillis,
                 pointerCount = pointerCount,
             )) {
-                EdgeGestureAction.OPEN_PALETTE -> focusRequester.requestFocus()
-                EdgeGestureAction.CLOSE_MENUS -> viewModel.closeAllMenus()
-                EdgeGestureAction.OPEN_SELECTED -> viewModel.select()
+                EdgeGestureAction.SHOW_MENU -> { viewModel.resetToTopLevel(); showKeyboardRequest = true }
+                EdgeGestureAction.CLOSE_MENUS -> { viewModel.closeAllMenus(); focusRequester.freeFocus(); keyboard?.hide() }
+                EdgeGestureAction.SELECT, EdgeGestureAction.RIGHT_KEY -> viewModel.select()
                 EdgeGestureAction.BACKSPACE -> viewModel.deleteSearchCharacter()
-                EdgeGestureAction.NEXT -> viewModel.move(1)
-                EdgeGestureAction.PREVIOUS -> viewModel.move(-1)
+                EdgeGestureAction.NEXT, EdgeGestureAction.VOLUME_DOWN -> viewModel.move(1)
+                EdgeGestureAction.PREVIOUS, EdgeGestureAction.VOLUME_UP -> viewModel.move(-1)
+                EdgeGestureAction.BACK -> viewModel.back()
                 EdgeGestureAction.BRIGHTNESS_UP -> viewModel.openBrightnessControls(increase = true)
                 EdgeGestureAction.BRIGHTNESS_DOWN -> viewModel.openBrightnessControls(increase = false)
-                EdgeGestureAction.OPEN_CONTEXT -> contextIndex = state.selectedIndex
+                EdgeGestureAction.LOCK_FALLBACK -> viewModel.openLockFallback()
+                EdgeGestureAction.ROTATE_FALLBACK -> viewModel.openRotateFallback()
+                EdgeGestureAction.OPEN_CONTEXT -> viewModel.requestContext(state.selectedIndex)
+                EdgeGestureAction.OPEN_ACTION_MENU -> viewModel.showActionMenu()
                 null -> Unit
             }
         }
@@ -203,37 +230,76 @@ private fun LauncherScreen(viewModel: LauncherViewModel) {
                     name = command.name,
                     description = command.description,
                     onClick = { viewModel.select(index) },
-                    onLongClick = { viewModel.highlight(index); contextIndex = index },
+                    onLongClick = { viewModel.highlight(index); viewModel.requestContext(index) },
                 )
             }
         }
-        Text("volume: move  enter: select  back: up", fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
+        Text("vol up/down: prev/next  both: open  hold up: context  back: up", fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
         TextButton(
             onClick = { showGestureHelp = true },
             modifier = Modifier.semantics { contentDescription = "Open gesture help" },
         ) { Text("[?] gesture map", fontSize = 12.sp) }
     }
-    contextIndex?.let { index ->
+    state.contextIndex?.let { index ->
         state.commands.getOrNull(index)?.let { command ->
-            AlertDialog(
-                onDismissRequest = { contextIndex = null },
-                title = { Text(command.name) },
-                text = { Text(command.description.ifBlank { "Command context menu" }) },
-                confirmButton = {
-                    TextButton(onClick = { contextIndex = null; viewModel.select(index) }) { Text("Open") }
-                },
-                dismissButton = {
-                    Row {
-                        if (viewModel.isApplication(index)) {
-                            TextButton(onClick = { contextIndex = null; viewModel.openApplicationDetails(index) }) { Text("App info") }
-                        }
-                        TextButton(onClick = { contextIndex = null }) { Text("Cancel") }
-                    }
-                },
+            ActionMenuDialog(
+                name = command.name,
+                description = command.description,
+                isApplication = viewModel.isApplication(index),
+                onDismiss = viewModel::dismissContext,
+                onOpen = { viewModel.dismissContext(); viewModel.select(index) },
+                onAppInfo = { viewModel.dismissContext(); viewModel.openApplicationDetails(index) },
             )
         }
     }
+    if (state.actionMenuVisible) FourActionDialog(
+        onDismiss = viewModel::dismissActionMenu,
+        onClose = { viewModel.dismissActionMenu(); viewModel.reportGlobalWindowAction("Close") },
+        onKill = { viewModel.dismissActionMenu(); viewModel.reportGlobalWindowAction("Kill") },
+        onHideKeyboard = { viewModel.dismissActionMenu(); focusRequester.freeFocus(); keyboard?.hide() },
+        onShowKeyboard = { viewModel.dismissActionMenu(); showKeyboardRequest = true },
+    )
     if (showGestureHelp) GestureHelpDialog(onDismiss = { showGestureHelp = false })
+}
+
+@Composable
+private fun ActionMenuDialog(name: String, description: String, isApplication: Boolean, onDismiss: () -> Unit, onOpen: () -> Unit, onAppInfo: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(name) },
+        text = { Text(description) },
+        confirmButton = { TextButton(onClick = onOpen) { Text("Open") } },
+        dismissButton = {
+            Row {
+                if (isApplication) TextButton(onClick = onAppInfo) { Text("App info") }
+                TextButton(onClick = onDismiss) { Text("Cancel") }
+            }
+        },
+    )
+}
+
+@Composable
+private fun FourActionDialog(
+    onDismiss: () -> Unit,
+    onClose: () -> Unit,
+    onKill: () -> Unit,
+    onHideKeyboard: () -> Unit,
+    onShowKeyboard: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Window actions") },
+        text = { Text("Global window control is unavailable to an ordinary Android launcher.") },
+        confirmButton = {
+            Column {
+                TextButton(onClick = onClose) { Text("Close window") }
+                TextButton(onClick = onKill) { Text("Kill window") }
+                TextButton(onClick = onHideKeyboard) { Text("Hide keyboard") }
+                TextButton(onClick = onShowKeyboard) { Text("Show keyboard") }
+                TextButton(onClick = onDismiss) { Text("Cancel") }
+            }
+        },
+    )
 }
 
 @Composable
@@ -243,13 +309,13 @@ private fun GestureHelpDialog(onDismiss: () -> Unit) {
         title = { Text("SxDroid gesture map") },
         text = {
             Text(
-                "top down  palette\n" +
-                    "up to top  close menus\n" +
-                    "bottom right  open selected\n" +
-                    "bottom left  backspace / back\n" +
-                    "right down / up  next / previous\n" +
-                    "top right / left  brightness controls\n" +
-                    "hold  selected item context",
+                "top: left/right brightness; up close; down show\n" +
+                    "left: up/down previous/next; right previous; left back\n" +
+                    "right: up/down volume up/down; left next; right select\n" +
+                    "bottom long: left Backspace; right Enter/select\n" +
+                    "bottom vertical: action menu\n" +
+                    "bottom-left diagonal: Lock fallback; bottom-right: Rotate fallback\n" +
+                    "hold: action menu",
             )
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } },
