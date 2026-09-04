@@ -97,7 +97,7 @@ class MainActivity : ComponentActivity() {
     @SuppressLint("RestrictedApi")
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         val volumeKey = event.keyCode == KeyEvent.KEYCODE_VOLUME_UP || event.keyCode == KeyEvent.KEYCODE_VOLUME_DOWN
-        if (volumeKey && hasWindowFocus() && !destroyed) {
+        if (volumeKey && !destroyed) {
             val key = if (event.keyCode == KeyEvent.KEYCODE_VOLUME_UP) VolumeKey.UP else VolumeKey.DOWN
             if (event.action == KeyEvent.ACTION_DOWN) {
                 performVolumeActions(volumeController.onDown(key, SystemClock.uptimeMillis(), event.isLongPress))
@@ -141,7 +141,11 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun performVolumeActions(actions: List<LauncherAction>) = actions.forEach { perform(it, opensMenuWhenClosed = false) }
+    private fun performVolumeActions(actions: List<LauncherAction>) {
+        if (actions.isEmpty()) return
+        if (!launcher.menuVisible) launcher.showMenu()
+        actions.forEach { perform(it, opensMenuWhenClosed = false) }
+    }
 
     private fun scheduleVolumeTimeout() {
         keyHandler.removeCallbacks(volumeTimeout)
