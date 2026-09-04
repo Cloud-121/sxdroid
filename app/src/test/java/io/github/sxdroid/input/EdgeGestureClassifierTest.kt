@@ -70,6 +70,14 @@ class EdgeGestureClassifierTest {
         assertEquals(EdgeGestureAction.RIGHT_KEY, custom.classify(point(100f, 10f), point(100f, 70f), bounds))
     }
 
+    @Test fun default_phone_sized_edge_swipes_are_recognized() {
+        val phone = GestureBounds(1080f, 1920f)
+        val defaults = EdgeGestureClassifier()
+        assertEquals(EdgeGestureAction.SHOW_MENU, defaults.classify(GesturePoint(540f, 90f), GesturePoint(540f, 190f), phone))
+        assertEquals(EdgeGestureAction.NEXT, defaults.classify(GesturePoint(90f, 960f), GesturePoint(90f, 1060f), phone))
+        assertEquals(EdgeGestureAction.VOLUME_UP, defaults.classify(GesturePoint(990f, 960f), GesturePoint(990f, 860f), phone))
+    }
+
     private fun assertAction(action: EdgeGestureAction, startX: Float, startY: Float, endX: Float, endY: Float) =
         assertEquals(action, classifier.classify(point(startX, startY), point(endX, endY), bounds))
 

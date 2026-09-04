@@ -4,8 +4,8 @@ import kotlin.math.abs
 
 /** Geometry, timing, and bindings kept independent of Compose and Android events. */
 data class EdgeGestureConfig(
-    val edgeSizePx: Float = 72f,
-    val minimumDistancePx: Float = 96f,
+    val edgeSizePx: Float = 160f,
+    val minimumDistancePx: Float = 80f,
     val longSwipeMinimumDistancePx: Float = 160f,
     val longSwipeMinimumDurationMillis: Long = 0L,
     val longPressMillis: Long = 500L,
