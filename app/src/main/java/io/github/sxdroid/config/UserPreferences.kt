@@ -7,12 +7,14 @@ data class HomeSettings(
     val showDate: Boolean = false,
     val showBattery: Boolean = false,
     val showNetwork: Boolean = false,
+    val groupAppsByLetter: Boolean = true,
 ) {
     fun toggle(option: SettingOption): HomeSettings = when (option) {
         SettingOption.CLOCK -> copy(showClock = !showClock)
         SettingOption.DATE -> copy(showDate = !showDate)
         SettingOption.BATTERY -> copy(showBattery = !showBattery)
         SettingOption.NETWORK -> copy(showNetwork = !showNetwork)
+        SettingOption.APP_LETTERS -> copy(groupAppsByLetter = !groupAppsByLetter)
     }
 
     fun isEnabled(option: SettingOption): Boolean = when (option) {
@@ -20,6 +22,7 @@ data class HomeSettings(
         SettingOption.DATE -> showDate
         SettingOption.BATTERY -> showBattery
         SettingOption.NETWORK -> showNetwork
+        SettingOption.APP_LETTERS -> groupAppsByLetter
     }
 }
 
@@ -28,6 +31,7 @@ enum class SettingOption(val commandId: String, val title: String) {
     DATE("configuration.date", "Date"),
     BATTERY("configuration.battery", "Battery"),
     NETWORK("configuration.network", "Network"),
+    APP_LETTERS("configuration.app_letters", "Group Apps by letter"),
 }
 
 data class FavoriteApps(val appIds: Set<String> = emptySet()) {
@@ -46,6 +50,7 @@ class LauncherPreferences(context: Context) {
         showDate = preferences.getBoolean(KEY_DATE, false),
         showBattery = preferences.getBoolean(KEY_BATTERY, false),
         showNetwork = preferences.getBoolean(KEY_NETWORK, false),
+        groupAppsByLetter = preferences.getBoolean(KEY_GROUP_APPS, true),
     )
 
     fun saveSettings(settings: HomeSettings) {
@@ -54,6 +59,7 @@ class LauncherPreferences(context: Context) {
             .putBoolean(KEY_DATE, settings.showDate)
             .putBoolean(KEY_BATTERY, settings.showBattery)
             .putBoolean(KEY_NETWORK, settings.showNetwork)
+            .putBoolean(KEY_GROUP_APPS, settings.groupAppsByLetter)
             .apply()
     }
 
@@ -71,6 +77,7 @@ class LauncherPreferences(context: Context) {
         const val KEY_DATE = "home_date"
         const val KEY_BATTERY = "home_battery"
         const val KEY_NETWORK = "home_network"
+        const val KEY_GROUP_APPS = "group_apps_by_letter"
         const val KEY_FAVORITES = "favorite_apps"
     }
 }

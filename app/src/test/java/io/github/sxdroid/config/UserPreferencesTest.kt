@@ -13,6 +13,8 @@ class UserPreferencesTest {
         assertFalse(settings.showDate)
         assertFalse(settings.showBattery)
         assertTrue(settings.isEnabled(SettingOption.CLOCK))
+        assertTrue(settings.groupAppsByLetter)
+        assertFalse(settings.toggle(SettingOption.APP_LETTERS).groupAppsByLetter)
     }
 
     @Test fun favorites_toggle_without_duplicates() {

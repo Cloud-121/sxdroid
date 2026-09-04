@@ -22,7 +22,7 @@ After installation, press Home and choose **SxDroid** as the default launcher. T
 - Back clears a search first, then leaves a nested menu, then hides the top-level Menu. A top-edge swipe up also hides the menu.
 - Hardware navigation opens the menu when home is closed before navigating; Enter/center opens the menu first rather than immediately launching its first item. Menu scrolling follows the highlighted row after volume and touch navigation.
 - Favorites lists apps added with an app row's long-press context action. Favorites and launcher configuration persist locally with SharedPreferences.
-- Configuration toggles the centered clock, date, battery, and network overlays. Overlays are shown only on the wallpaper home while menus are closed.
+- Configuration toggles the centered clock, date, battery, and network overlays. It also controls whether Apps uses A-Z letter submenus; this option is enabled by default. Overlays are shown only on the wallpaper home while menus are closed.
 - Controls toggles the flashlight and raises or lowers media/ring volume. Flashlight access requests the ordinary Camera permission when first used and handles missing hardware or denied access without privileged APIs.
 - The System menu opens Android Settings, Wi-Fi, Bluetooth, Display, and Sound pages.
 - Long-press an app or command row, or the launcher surface, for the selected command context menu including favorite and Android App info actions where applicable.

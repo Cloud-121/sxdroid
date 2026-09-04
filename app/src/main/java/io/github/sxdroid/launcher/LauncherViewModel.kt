@@ -165,6 +165,10 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     }
 
     private fun rebuildAppMenus() {
+        if (!_state.value.settings.groupAppsByLetter) {
+            menus["apps"] = menus.getValue("apps").copy(commands = listOf(favoritesMenuCommand()) + applications)
+            return
+        }
         val grouped = LinkedHashMap<String, MutableList<Command>>()
         applications.forEach { command ->
             val first = command.name.trim().firstOrNull()?.uppercaseChar()
@@ -353,6 +357,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         val settings = _state.value.settings.toggle(option)
         preferences.saveSettings(settings)
         _state.value = _state.value.copy(settings = settings, message = "${option.title}: ${if (settings.isEnabled(option)) "on" else "off"}")
+        if (option == SettingOption.APP_LETTERS) rebuildAppMenus()
         menus["configuration"] = menus.getValue("configuration").copy(commands = configurationCommands())
         publish()
     }
