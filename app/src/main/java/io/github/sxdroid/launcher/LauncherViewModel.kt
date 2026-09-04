@@ -102,7 +102,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             OpenIntentCommand("system.display", "Display", "Display settings", listOf("screen", "brightness"), Intent(Settings.ACTION_DISPLAY_SETTINGS)),
             OpenIntentCommand("system.sound", "Sound", "Sound settings", listOf("audio", "volume"), Intent(Settings.ACTION_SOUND_SETTINGS)),
         ))
-        val apps = CommandMenu("apps", "Apps", emptyList())
+        val apps = CommandMenu("apps", "Apps", listOf(favoritesMenuCommand()))
         val favorites = CommandMenu("favorites", "Favorites", emptyList())
         val configuration = CommandMenu("configuration", "Configuration", configurationCommands())
         val controls = CommandMenu("controls", "Controls", DeviceControl.entries.map(::DeviceControlCommand))
@@ -158,10 +158,18 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     private fun refreshApplications() = viewModelScope.launch {
         _state.value = _state.value.copy(loading = true)
         applications = registry.installedApplications()
-        menus["apps"] = menus.getValue("apps").copy(commands = applications)
+        menus["apps"] = menus.getValue("apps").copy(commands = listOf(favoritesMenuCommand()) + applications)
         updateFavoritesMenu()
         publish(loading = false)
     }
+
+    private fun favoritesMenuCommand() = MenuCommand(
+        "menu.favorites",
+        "Favorites",
+        "Favorite applications",
+        listOf("starred", "apps"),
+        "favorites",
+    )
 
     private fun configurationCommands(): List<Command> = SettingOption.entries.map { option ->
         SettingCommand(option, _state.value.settings.isEnabled(option))

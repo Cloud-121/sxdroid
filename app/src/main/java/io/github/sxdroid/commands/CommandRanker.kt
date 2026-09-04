@@ -5,7 +5,7 @@ import java.util.Locale
 object CommandRanker {
     fun rank(commands: List<Command>, query: String): List<Command> {
         val needle = query.trim().lowercase(Locale.ROOT)
-        if (needle.isEmpty()) return commands.sortedWith(byName())
+        if (needle.isEmpty()) return commands.withIndex().sortedWith(compareBy<IndexedValue<Command>> { if (it.value is MenuCommand) 0 else 1 }.thenBy { if (it.value is MenuCommand) it.index else 0 }.thenBy { it.value.name.lowercase(Locale.ROOT) }.thenBy { it.value.id }).map { it.value }
         val tokens = needle.split(Regex("\\s+")).filter(String::isNotBlank)
         return commands.mapNotNull { command ->
             score(command, needle, tokens)?.let { it to command }

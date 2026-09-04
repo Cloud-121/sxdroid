@@ -1,6 +1,6 @@
 # SxDroid
 
-SxDroid is a small, keyboard-first Android home launcher inspired by Sxmo's text menu model and dmenu. Home keeps the wallpaper visible and can optionally show a centered clock, date, battery, and network status.
+SxDroid is a small, keyboard-first Android home launcher inspired by Sxmo's text menu model and dmenu. Home keeps the wallpaper visible and can optionally show a centered clock, date, battery, and network status. The top-level Menu contains Apps, Controls, System, and Configuration; Favorites is the first item inside Apps.
 
 ## Build and install
 
@@ -15,7 +15,7 @@ After installation, press Home and choose **SxDroid** as the default launcher. T
 
 ## Usage
 
-- Swipe down from the top edge or press the hardware Menu key to open or reset the top-level Menu. Home is fully transparent and has no persistent menu, status, search, commands, tabs, or gesture help, so the wallpaper remains visible. Hardware navigation also opens the menu before acting. Other edge gestures and volume keys do not open it from home. Type in `search` to filter the current menu. Apps contains a separate text-only list of launchable activities.
+- Swipe down from the top edge or press the hardware Menu key to open or reset the top-level Menu. Home is fully transparent and has no persistent menu, status, search, commands, tabs, or gesture help, so the wallpaper remains visible. Hardware navigation and volume keys open the menu before acting. Type in `search` to filter the current menu. Apps contains Favorites first, followed by the text-only list of launchable activities.
 - Tap a row or use Enter/DPAD center to open the selected item.
 - In focused SxDroid, Volume Up/Down selects the previous/next item for short, long, and repeat events. Apps selections auto-scroll into view.
 - With the menu open, press Volume Up and Volume Down together to select/open the highlighted item.

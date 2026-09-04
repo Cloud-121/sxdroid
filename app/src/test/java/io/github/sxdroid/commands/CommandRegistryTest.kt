@@ -6,7 +6,7 @@ import org.junit.Test
 class CommandRegistryTest {
     @Test fun top_level_menu_exposes_only_functional_entries() {
         assertEquals(
-            listOf("menu.favorites", "menu.apps", "menu.configuration", "menu.controls", "menu.system"),
+            listOf("menu.apps", "menu.controls", "menu.system", "menu.configuration"),
             builtInMenuCommands().map { it.id },
         )
     }
