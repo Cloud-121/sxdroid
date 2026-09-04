@@ -15,7 +15,7 @@ After installation, press Home and choose **SxDroid** as the default launcher. T
 
 ## Usage
 
-- Swipe down from the top edge or press the hardware Menu key to open or reset the top-level Menu. Home is fully transparent and has no persistent menu, status, search, commands, tabs, or gesture help, so the wallpaper remains visible. Hardware navigation and volume keys open the menu before acting. Type in `search` to filter the current menu. Apps contains Favorites first, followed by the text-only list of launchable activities.
+- Swipe down from the top edge or press the hardware Menu key to open or reset the top-level Menu. Home is fully transparent and has no persistent menu, status, search, commands, tabs, or gesture help, so the wallpaper remains visible. Hardware navigation and volume keys open the menu before acting. Type in `search` to filter the current menu. Apps contains Favorites first, followed by A-Z letter submenus; choose a letter to see apps beginning with it.
 - Tap a row or use Enter/DPAD center to open the selected item.
 - In focused SxDroid, Volume Up/Down selects the previous/next item for short, long, and repeat events. Apps selections auto-scroll into view.
 - With the menu open, press Volume Up and Volume Down together to select/open the highlighted item.

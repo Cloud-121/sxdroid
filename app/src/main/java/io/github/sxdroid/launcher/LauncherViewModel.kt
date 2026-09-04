@@ -40,7 +40,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-
+import java.util.Locale
+import kotlin.collections.LinkedHashMap
 data class LauncherState(
     val menuVisible: Boolean = false,
     val menuId: String = "root",
@@ -158,9 +159,33 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     private fun refreshApplications() = viewModelScope.launch {
         _state.value = _state.value.copy(loading = true)
         applications = registry.installedApplications()
-        menus["apps"] = menus.getValue("apps").copy(commands = listOf(favoritesMenuCommand()) + applications)
+        rebuildAppMenus()
         updateFavoritesMenu()
         publish(loading = false)
+    }
+
+    private fun rebuildAppMenus() {
+        val grouped = LinkedHashMap<String, MutableList<Command>>()
+        applications.forEach { command ->
+            val first = command.name.trim().firstOrNull()?.uppercaseChar()
+            val letter = if (first != null && first in 'A'..'Z') first.toString() else "#"
+            grouped.getOrPut(letter) { mutableListOf() } += command
+        }
+        menus.keys.filter { it.startsWith("apps.letter.") }.toList().forEach { menuId ->
+            menus[menuId] = menus.getValue(menuId).copy(commands = emptyList())
+        }
+        val letterCommands = grouped.toSortedMap().map { (letter, commands) ->
+            val menuId = "apps.letter.${letter.lowercase(Locale.ROOT)}"
+            menus[menuId] = CommandMenu(menuId, letter, commands.sortedBy { it.name.lowercase(Locale.ROOT) })
+            MenuCommand(
+                "menu.apps.letter.${letter.lowercase(Locale.ROOT)}",
+                letter,
+                "Apps beginning with $letter",
+                listOf("apps", "letter", letter.lowercase(Locale.ROOT)),
+                menuId,
+            )
+        }
+        menus["apps"] = menus.getValue("apps").copy(commands = listOf(favoritesMenuCommand()) + letterCommands)
     }
 
     private fun favoritesMenuCommand() = MenuCommand(
