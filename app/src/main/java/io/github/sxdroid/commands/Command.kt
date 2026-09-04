@@ -18,7 +18,7 @@ class LaunchApplicationCommand(
     override val name: String,
     override val description: String,
     override val keywords: List<String>,
-    private val packageName: String,
+    val packageName: String,
     private val activityName: String,
 ) : Command {
     override suspend fun execute(context: Context) {

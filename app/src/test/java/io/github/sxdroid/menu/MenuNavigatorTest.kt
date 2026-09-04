@@ -16,4 +16,17 @@ class MenuNavigatorTest {
         assertEquals("root", navigator.current.id)
         assertFalse(navigator.back())
     }
+
+    @Test fun close_all_returns_directly_to_root() {
+        val root = CommandMenu("root", "home", emptyList())
+        val first = CommandMenu("first", "first", emptyList())
+        val second = CommandMenu("second", "second", emptyList())
+        val navigator = MenuNavigator(root, listOf(root, first, second).associateBy { it.id })
+        assertTrue(navigator.enter("first"))
+        assertTrue(navigator.enter("second"))
+        assertTrue(navigator.closeAll())
+        assertEquals("root", navigator.current.id)
+        assertEquals(1, navigator.depth)
+        assertFalse(navigator.closeAll())
+    }
 }

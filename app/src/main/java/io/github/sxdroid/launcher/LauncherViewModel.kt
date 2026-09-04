@@ -17,10 +17,12 @@ import io.github.sxdroid.commands.Command
 import io.github.sxdroid.commands.CommandRanker
 import io.github.sxdroid.commands.CommandRegistry
 import io.github.sxdroid.commands.MenuCommand
+import io.github.sxdroid.commands.LaunchApplicationCommand
 import io.github.sxdroid.commands.OpenIntentCommand
 import io.github.sxdroid.menu.CommandMenu
 import io.github.sxdroid.menu.MenuNavigator
 import io.github.sxdroid.system.DeviceStatus
+import io.github.sxdroid.system.AndroidActions
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -111,11 +113,46 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         publish()
     }
 
+    fun deleteSearchCharacter() {
+        if (_state.value.query.isNotEmpty()) setQuery(_state.value.query.dropLast(1)) else back()
+    }
+
+    fun openBrightnessControls(increase: Boolean) {
+        val direction = if (increase) "increase" else "decrease"
+        AndroidActions.openDisplayControls(getApplication()).fold(
+            onSuccess = { _state.value = _state.value.copy(message = "Use Display settings to $direction brightness") },
+            onFailure = { _state.value = _state.value.copy(message = "Display controls are unavailable") },
+        )
+    }
+
+    fun openApplicationDetails(index: Int) {
+        val command = _state.value.commands.getOrNull(index) as? LaunchApplicationCommand ?: return
+        AndroidActions.openApplicationDetails(getApplication(), command.packageName)
+            .onFailure { _state.value = _state.value.copy(message = "Application details are unavailable") }
+    }
+
+    fun isApplication(index: Int): Boolean = _state.value.commands.getOrNull(index) is LaunchApplicationCommand
+
+    fun closeAllMenus(): Boolean {
+        val hadQuery = _state.value.query.isNotEmpty()
+        val closedMenus = navigator.closeAll()
+        val consumed = hadQuery || closedMenus
+        if (consumed) {
+            _state.value = _state.value.copy(query = "", selectedIndex = 0, message = null)
+            publish()
+        }
+        return consumed
+    }
+
     fun move(delta: Int) {
         val commands = _state.value.commands
         if (commands.isEmpty()) return
         val index = (_state.value.selectedIndex + delta).floorMod(commands.size)
         _state.value = _state.value.copy(selectedIndex = index)
+    }
+
+    fun highlight(index: Int) {
+        if (index in _state.value.commands.indices) _state.value = _state.value.copy(selectedIndex = index)
     }
 
     fun select(index: Int = _state.value.selectedIndex) {

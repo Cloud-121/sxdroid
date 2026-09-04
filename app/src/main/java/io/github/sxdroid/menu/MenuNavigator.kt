@@ -20,4 +20,10 @@ class MenuNavigator(private val root: CommandMenu, private val menus: Map<String
         stack.removeAt(stack.lastIndex)
         return true
     }
+
+    fun closeAll(): Boolean {
+        if (stack.size == 1) return false
+        stack.subList(1, stack.size).clear()
+        return true
+    }
 }
