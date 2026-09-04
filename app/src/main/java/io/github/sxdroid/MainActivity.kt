@@ -1,5 +1,6 @@
 package io.github.sxdroid
 
+import android.annotation.SuppressLint
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -93,6 +94,7 @@ class MainActivity : ComponentActivity() {
         setContent { SxDroidTheme { LauncherScreen(launcher) } }
     }
 
+    @SuppressLint("RestrictedApi")
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         val volumeKey = event.keyCode == KeyEvent.KEYCODE_VOLUME_UP || event.keyCode == KeyEvent.KEYCODE_VOLUME_DOWN
         if (volumeKey && hasWindowFocus() && !destroyed) {

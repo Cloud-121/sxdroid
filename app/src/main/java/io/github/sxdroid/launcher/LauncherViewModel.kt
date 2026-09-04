@@ -68,6 +68,9 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         override fun onLost(network: Network) = updateNetwork()
         override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) = updateNetwork()
     }
+    private var packageReceiverRegistered = false
+    private var batteryReceiverRegistered = false
+    private var networkCallbackRegistered = false
 
     init {
         buildMenus()
@@ -99,11 +102,34 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             addAction(Intent.ACTION_PACKAGE_CHANGED)
             addDataScheme("package")
         }
-        if (Build.VERSION.SDK_INT >= 33) context.registerReceiver(packageReceiver, packageFilter, Context.RECEIVER_NOT_EXPORTED)
-        else @Suppress("DEPRECATION") context.registerReceiver(packageReceiver, packageFilter)
-        context.registerReceiver(batteryReceiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED))?.let(::updateBattery)
-        val connectivity = context.getSystemService(ConnectivityManager::class.java)
-        connectivity.registerDefaultNetworkCallback(networkCallback)
+        try {
+            if (Build.VERSION.SDK_INT >= 33) {
+                context.registerReceiver(packageReceiver, packageFilter, Context.RECEIVER_NOT_EXPORTED)
+            } else {
+                @Suppress("DEPRECATION")
+                context.registerReceiver(packageReceiver, packageFilter)
+            }
+            packageReceiverRegistered = true
+
+            val batteryIntent = if (Build.VERSION.SDK_INT >= 33) {
+                context.registerReceiver(batteryReceiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED), Context.RECEIVER_NOT_EXPORTED)
+            } else {
+                @Suppress("DEPRECATION")
+                context.registerReceiver(batteryReceiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+            }
+            batteryReceiverRegistered = true
+            batteryIntent?.let(::updateBattery)
+
+            val connectivity = context.getSystemService(ConnectivityManager::class.java)
+            if (connectivity != null) {
+                connectivity.registerDefaultNetworkCallback(networkCallback)
+                networkCallbackRegistered = true
+            }
+        } catch (_: SecurityException) {
+            // A launcher must still render if a device policy blocks a status receiver.
+        } catch (_: IllegalArgumentException) {
+            // Avoid failing startup on devices with an unavailable system service.
+        }
         updateNetwork()
     }
 
@@ -272,7 +298,8 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
 
     private fun updateNetwork() {
         val connectivity = getApplication<Application>().getSystemService(ConnectivityManager::class.java)
-        val capabilities = connectivity.getNetworkCapabilities(connectivity.activeNetwork)
+        val activeNetwork = connectivity?.activeNetwork
+        val capabilities = connectivity?.getNetworkCapabilities(activeNetwork)
         val network = when {
             capabilities == null -> "network off"
             capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> "wifi"
@@ -285,9 +312,20 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
 
     override fun onCleared() {
         val context = getApplication<Application>()
-        context.unregisterReceiver(packageReceiver)
-        context.unregisterReceiver(batteryReceiver)
-        context.getSystemService(ConnectivityManager::class.java).unregisterNetworkCallback(networkCallback)
+        if (packageReceiverRegistered) {
+            runCatching { context.unregisterReceiver(packageReceiver) }
+            packageReceiverRegistered = false
+        }
+        if (batteryReceiverRegistered) {
+            runCatching { context.unregisterReceiver(batteryReceiver) }
+            batteryReceiverRegistered = false
+        }
+        if (networkCallbackRegistered) {
+            context.getSystemService(ConnectivityManager::class.java)?.let { connectivity ->
+                runCatching { connectivity.unregisterNetworkCallback(networkCallback) }
+            }
+            networkCallbackRegistered = false
+        }
         super.onCleared()
     }
 }
