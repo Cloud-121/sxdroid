@@ -3,6 +3,26 @@ package io.github.sxdroid.commands
 import java.util.Locale
 
 object CommandRanker {
+    /**
+     * Selects the searchable command source before ranking it.
+     *
+     * Apps are grouped into letter submenus for navigation, but searching from
+     * the Apps view must not inherit that grouping. Once a query is entered,
+     * search the complete installed-app list from either the Apps menu or one
+     * of its letter submenus.
+     */
+    fun searchCommands(
+        menuId: String,
+        query: String,
+        visibleCommands: List<Command>,
+        allApplications: List<Command>,
+    ): List<Command> {
+        val searchAllApplications = query.isNotBlank() &&
+            (menuId == "apps" || menuId.startsWith("apps.letter."))
+        val source = if (searchAllApplications) allApplications else visibleCommands
+        return rank(source, query)
+    }
+
     fun rank(commands: List<Command>, query: String): List<Command> {
         val needle = query.trim().lowercase(Locale.ROOT)
         if (needle.isEmpty()) return commands.withIndex().sortedWith(compareBy<IndexedValue<Command>> { if (it.value is MenuCommand) 0 else 1 }.thenBy { if (it.value is MenuCommand) it.index else 0 }.thenBy { it.value.name.lowercase(Locale.ROOT) }.thenBy { it.value.id }).map { it.value }

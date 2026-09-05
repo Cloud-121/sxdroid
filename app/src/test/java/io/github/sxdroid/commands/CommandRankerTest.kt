@@ -37,4 +37,31 @@ class CommandRankerTest {
         val commands = listOf(TestCommand("z", "Alpha"), TestCommand("a", "Alpha"), TestCommand("b", "Beta"))
         assertEquals(listOf("a", "z", "b"), CommandRanker.rank(commands, " ").map { it.id })
     }
+
+    @Test fun app_search_uses_all_applications_from_apps_and_letter_menus() {
+        val visibleLetterCommands = listOf(TestCommand("c", "Calculator"))
+        val allApplications = listOf(
+            TestCommand("c", "Calculator"),
+            TestCommand("m", "Maps"),
+        )
+
+        assertEquals(
+            listOf("m"),
+            CommandRanker.searchCommands("apps", "maps", visibleLetterCommands, allApplications).map { it.id },
+        )
+        assertEquals(
+            listOf("m"),
+            CommandRanker.searchCommands("apps.letter.c", "maps", visibleLetterCommands, allApplications).map { it.id },
+        )
+    }
+
+    @Test fun other_menus_keep_their_visible_search_scope() {
+        val visibleCommands = listOf(TestCommand("settings", "Settings"))
+        val allApplications = listOf(TestCommand("maps", "Maps"))
+
+        assertEquals(
+            emptyList<String>(),
+            CommandRanker.searchCommands("system", "maps", visibleCommands, allApplications).map { it.id },
+        )
+    }
 }

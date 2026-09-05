@@ -411,7 +411,12 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
 
     private fun publish(loading: Boolean = _state.value.loading) {
         val current = navigator.current
-        val commands = CommandRanker.rank(current.commands, _state.value.query)
+        val commands = CommandRanker.searchCommands(
+            menuId = current.id,
+            query = _state.value.query,
+            visibleCommands = current.commands,
+            allApplications = applications,
+        )
         _state.value = _state.value.copy(
             menuId = current.id,
             title = current.title,
